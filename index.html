@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal SMAN 1 Dramaga</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="app-container">
+        <!-- Konten Aplikasi akan dirender di sini oleh JavaScript -->
+    </div>
+
+    <!-- Modal Container -->
+    <div id="modal-placeholder"></div>
+
+    <script type="module">
+        // --- Import Firebase ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            signInWithCustomToken, 
+            onAuthStateChanged,
+            setPersistence,
+            browserSessionPersistence
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            collection, 
+            query, 
+            onSnapshot, 
+            addDoc, 
+            serverTimestamp,
+            setLogLevel,
+            doc,
+            getDoc,
+            setDoc,
+            deleteDoc
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Konfigurasi Awal Firebase (Global Variables from Canvas) ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-sman1dramaga-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // --- Data Statis & Mock ---
+        const MOCK_CREDENTIALS = [
+            { username: 'admin_smanda', password: '123456', role: 'admin', displayName: 'Admin SMANDA' },
+            { username: 'guru_fisika', password: '123456', role: 'guru', displayName: 'Bapak/Ibu Guru' },
+            { username: 'rani_siswa', password: '123456', role: 'siswa', displayName: 'Rani (Siswa)' },
+            { username: 'ayah_budi', password: '123456', role: 'wali', displayName: 'Wali Murid' },
+            { username: 'tamu', password: '111111', role: 'siswa', displayName: 'Pengunjung Tamu' }
+        ];
+        const MOCK_TEACHERS = [
+            { name: "Bpk. Arman Syahputra, S.Pd.", subject: "Fisika", imageUrl: "https://placehold.co/100x100/10b981/ffffff?text=AS" },
+            { name: "Ibu Rina Wijaya, M.Kom.", subject: "Informatika", imageUrl: "https://placehold.co/100x100/ef4444/ffffff?text=RW" },
+            { name: "Ibu Desi Purnamasari, S.H.", subject: "Pendidikan Pancasila", imageUrl: "https://placehold.co/100x100/3b82f6/ffffff?text=DP" },
+            { name: "Bpk. Heri Santoso, S.Ag.", subject: "Pendidikan Agama Islam", imageUrl: "https://placehold.co/100x100/f59e0b/ffffff?text=HS" },
+            { name: "Ibu Maya Fitriani, M.Pd.", subject: "Bahasa Inggris", imageUrl: "https://placehold.co/100x100/6366f1/ffffff?text=MF" },
+            { name: "Bpk. Chandra Kirana, S.S.", subject: "Bahasa Indonesia", imageUrl: "https://placehold.co/100x100/06b6d4/ffffff?text=CK" },
+        ];
+        const MOCK_SCHEDULES = {
+            'XII-A': { Senin: ["07:30 - 09:00 | B. Indonesia", "09:00 - 10:30 | Matematika", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | PJOK"], Selasa: ["07:30 - 09:00 | Fisika", "09:00 - 10:30 | Kimia", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | B. Inggris"], Rabu: ["07:30 - 09:00 | Biologi", "09:00 - 10:30 | Informatika", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | PKN"], Kamis: ["07:30 - 09:00 | B. Sunda", "09:00 - 10:30 | Geografi", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | B. Indonesia"], Jumat: ["07:30 - 09:00 | PAI", "09:00 - 10:30 | B. Inggris", "10:30 - 11:00 | Istirahat"]},
+            'XII-B': { Senin: ["07:30 - 09:00 | Matematika P", "09:00 - 10:30 | Fisika", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | Kimia"], Selasa: ["07:30 - 09:00 | Biologi", "09:00 - 10:30 | B. Inggris", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | PKN"], Rabu: ["07:30 - 09:00 | Sejarah", "09:00 - 10:30 | Matematika M", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | Seni Budaya"], Kamis: ["07:30 - 09:00 | B. Sunda", "09:00 - 10:30 | Kimia", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | PJOK"], Jumat: ["07:30 - 09:00 | PAI", "09:00 - 10:30 | B. Indonesia", "10:30 - 11:00 | Istirahat"]},
+            'XII-C': { Senin: ["07:30 - 09:00 | Ekonomi", "09:00 - 10:30 | Geografi", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | Sosiologi"], Selasa: ["07:30 - 09:00 | Matematika", "09:00 - 10:30 | B. Inggris", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | PKN"], Rabu: ["07:30 - 09:00 | Seni Budaya", "09:00 - 10:30 | Ekonomi", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | Geografi"], Kamis: ["07:30 - 09:00 | B. Sunda", "09:00 - 10:30 | Informatika", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | PJOK"], Jumat: ["07:30 - 09:00 | PAI", "09:00 - 10:30 | Matematika", "10:30 - 11:00 | Istirahat"]},
+            'XII-D': { Senin: ["07:30 - 09:00 | Fisika", "09:00 - 10:30 | Kimia", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | Biologi"], Selasa: ["07:30 - 09:00 | B. Indonesia", "09:00 - 10:30 | B. Inggris", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | PKN"], Rabu: ["07:30 - 09:00 | Kimia", "09:00 - 10:30 | Matematika", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | Biologi"], Kamis: ["07:30 - 09:00 | Seni Budaya", "09:00 - 10:30 | B. Sunda", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | Informatika"], Jumat: ["07:30 - 09:00 | PAI", "09:00 - 10:30 | PJOK", "10:30 - 11:00 | Istirahat"]},
+            'XII-E': { Senin: ["07:30 - 09:00 | Geografi", "09:00 - 10:30 | Sosiologi", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | Ekonomi"], Selasa: ["07:30 - 09:00 | Matematika", "09:00 - 10:30 | B. Inggris", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | PKN"], Rabu: ["07:30 - 09:00 | Sejarah", "09:00 - 10:30 | Ekonomi", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | Sosiologi"], Kamis: ["07:30 - 09:00 | B. Sunda", "09:00 - 10:30 | Informatika", "10:30 - 11:00 | Istirahat", "11:00 - 12:30 | PJOK"], Jumat: ["07:30 - 09:00 | PAI", "09:00 - 10:30 | B. Inggris", "10:30 - 11:00 | Istirahat"]},
+        };
+        const SCHOOL_PROFILE_DATA = { visiMisi: { visi: "Terwujudnya Lulusan yang Unggul dalam Prestasi, Berkarakter Mulia, Berwawasan Global, dan Berbudaya Lingkungan.", misi: [ "Melaksanakan pembelajaran yang aktif, inovatif, kreatif, efektif, dan menyenangkan (PAIKEM) untuk mengembangkan potensi peserta didik secara optimal.", "Menumbuhkembangkan karakter religius, nasionalis, mandiri, gotong royong, dan integritas.", "Membekali peserta didik dengan keterampilan abad ke-21 (berpikir kritis, kreatif, komunikatif, dan kolaboratif).", "Menciptakan lingkungan sekolah yang bersih, sehat, hijau, dan lestari sebagai sumber belajar." ] }, sejarah: "SMAN 1 Dramaga didirikan pada tanggal 20 November 1983 berdasarkan Surat Keputusan Menteri Pendidikan dan Kebudayaan. Awalnya, sekolah ini merupakan filial dari SMAN 1 Bogor dan memulai kegiatan belajar mengajar dengan 3 rombongan belajar. Seiring berjalannya waktu dan meningkatnya kepercayaan masyarakat, SMAN 1 Dramaga terus berkembang pesat. Pembangunan infrastruktur dan peningkatan kualitas sumber daya manusia menjadi prioritas utama. Kini, SMAN 1 Dramaga telah menjadi salah satu sekolah menengah atas unggulan di Kabupaten Bogor, yang dikenal dengan prestasi akademik maupun non-akademik serta lulusan yang berdaya saing tinggi.", struktur: [ { role: 'Kepala Sekolah', name: 'Dr. H. Bambang Supriyadi, M.Pd.', imageUrl: 'https://placehold.co/128x128/3b82f6/ffffff?text=KS' }, { role: 'Wakasek Kurikulum', name: 'Dra. Sri Hartini, M.M.', imageUrl: 'https://placehold.co/128x128/10b981/ffffff?text=WKS' }, { role: 'Wakasek Kesiswaan', name: 'Ahmad Zaelani, S.Pd.I.', imageUrl: 'https://placehold.co/128x128/f59e0b/ffffff?text=WKK' }, { role: 'Wakasek Sarpras', name: 'Rahmat Hidayat, S.T.', imageUrl: 'https://placehold.co/128x128/ef4444/ffffff?text=WKS' }, { role: 'Kepala TU', name: 'Siti Aminah, S.E.', imageUrl: 'https://placehold.co/128x128/6366f1/ffffff?text=TU' }, ], akreditasi: { peringkat: 'A', keterangan: "Berdasarkan Sertifikat Akreditasi dari Badan Akreditasi Nasional Sekolah/Madrasah (BAN-S/M) tahun 2022, SMAN 1 Dramaga memperoleh predikat 'Unggul' (A) dengan nilai 95." } };
+        const AVAILABLE_ROLES = { admin: 'Admin Sekolah', guru: 'Guru', siswa: 'Siswa', wali: 'Wali Siswa' };
+        const LOGO_URL = "https://sman1dramaga.sch.id/wp-content/uploads/2022/11/cropped-logo-smanda-2.png"; 
+
+        const ICONS = {
+            calendar: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>`,
+            plus: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
+            clock: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+            briefcase: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
+            lock: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+            users: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+            schedule: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>`,
+            logout: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>`,
+            building: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>`,
+            star: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+        };
+
+        const FACILITIES = [ { name: 'Perpustakaan', icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-blue-500"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>`}, { name: 'Lab Fisika', icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-green-500"><path d="M10 2v7.31"/><path d="M14 9.31V2"/><path d="M8.5 2h7"/><path d="M14 9.31C16.57 10.47 18 12.93 18 16a6 6 0 0 1-12 0c0-3.07 1.43-5.53 4-6.69"/><path d="M6 16h12"/></svg>` }, { name: 'Lab Kimia', icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-red-500"><path d="M10 2v7.31"/><path d="M14 9.31V2"/><path d="M8.5 2h7"/><path d="M14 9.31C16.57 10.47 18 12.93 18 16a6 6 0 0 1-12 0c0-3.07 1.43-5.53 4-6.69"/><path d="M6 16h12"/></svg>` }, { name: 'Lab Biologi', icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-purple-500"><path d="M10 2v7.31"/><path d="M14 9.31V2"/><path d="M8.5 2h7"/><path d="M14 9.31C16.57 10.47 18 12.93 18 16a6 6 0 0 1-12 0c0-3.07 1.43-5.53 4-6.69"/><path d="M6 16h12"/></svg>` }, { name: 'Lab Komputer', icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-gray-700"><rect width="14" height="8" x="5" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h2"/><path d="M12 18h6"/></svg>` }, { name: 'Aula Serbaguna', icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-yellow-500"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>` }, { name: 'Lapangan Olahraga', icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-orange-500"><path d="m6.5 6.5 11 11"/><path d="m21 21-1-1"/><path d="m3 3 1 1"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m15 6-1.4-1.4"/><path d="m9 18 1.4 1.4"/><path d="M16.5 7.5 11 2"/><path d="m22 13-5.5-5.5"/></svg>` }, { name: 'Masjid Sekolah', icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-teal-500"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>` } ];
+
+        // --- Variabel State Aplikasi ---
+        let db, auth;
+        let userId = null;
+        let userRole = null;
+        let simulatedUsername = null;
+        let currentView = 'profile'; 
+        let activities = [];
+        let unsubscribeActivities = null;
+
+        // --- Elemen DOM Utama ---
+        const appContainer = document.getElementById('app-container');
+        const modalPlaceholder = document.getElementById('modal-placeholder');
+        
+        // --- Fungsi Render Utama ---
+        const render = () => {
+            if (!userId) {
+                renderLogin();
+                return;
+            }
+            const canPost = userRole === 'admin' || userRole === 'guru';
+
+            appContainer.innerHTML = `
+                <div class="min-h-screen font-sans">
+                    <header class="bg-white shadow-md sticky top-0 z-40">
+                        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <img src="${LOGO_URL}" alt="Logo SMAN 1 Dramaga" class="w-12 h-12 object-contain" onError="this.onerror=null;this.src='https://placehold.co/60x60/007FFF/ffffff?text=SMA';">
+                                <h1 class="text-xl md:text-2xl font-extrabold text-gray-800">SMAN 1 Dramaga</h1>
+                            </div>
+                            <nav class="flex items-center space-x-1 sm:space-x-2">
+                                <button data-view="profile" class="nav-button flex items-center px-3 py-2 rounded-lg font-semibold transition text-sm ${currentView === 'profile' ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100'}">
+                                    <span class="w-5 h-5 mr-0 sm:mr-2">${ICONS.building}</span><span class="hidden sm:inline">Profil</span>
+                                </button>
+                                <button data-view="activities" class="nav-button flex items-center px-3 py-2 rounded-lg font-semibold transition text-sm ${currentView === 'activities' ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'}">
+                                    <span class="w-5 h-5 mr-0 sm:mr-2">${ICONS.calendar}</span><span class="hidden sm:inline">Kegiatan</span>
+                                </button>
+                                <button data-view="schedule" class="nav-button flex items-center px-3 py-2 rounded-lg font-semibold transition text-sm ${currentView === 'schedule' ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-100'}">
+                                    <span class="w-5 h-5 mr-0 sm:mr-2">${ICONS.schedule}</span><span class="hidden sm:inline">Jadwal</span>
+                                </button>
+                                <button data-view="teachers" class="nav-button flex items-center px-3 py-2 rounded-lg font-semibold transition text-sm ${currentView === 'teachers' ? 'bg-yellow-600 text-white' : 'text-gray-700 hover:bg-gray-100'}">
+                                    <span class="w-5 h-5 mr-0 sm:mr-2">${ICONS.users}</span><span class="hidden sm:inline">Guru</span>
+                                </button>
+                                <button id="logout-button" class="flex items-center px-3 py-2 rounded-lg font-semibold transition text-sm text-red-600 hover:bg-red-50" aria-label="Logout">
+                                    <span class="w-5 h-5 mr-0 sm:mr-2">${ICONS.logout}</span><span class="hidden sm:inline">Keluar</span>
+                                </button>
+                            </nav>
+                        </div>
+                    </header>
+
+                    <main id="main-content" class="container mx-auto px-4 py-8">
+                        <div class="border-l-4 p-4 rounded-lg mb-8 shadow-md ${canPost ? 'bg-green-50 border-green-500' : 'bg-blue-50 border-blue-500'}">
+                            <div class="flex items-center justify-between flex-wrap gap-2">
+                                <div class="flex items-center space-x-2">
+                                    <span class="w-5 h-5 ${canPost ? 'text-green-700' : 'text-blue-700'}">${ICONS.briefcase}</span>
+                                    <p class="font-semibold text-sm text-gray-800"><span class="font-bold">${simulatedUsername}</span> (${AVAILABLE_ROLES[userRole] || 'Tamu'})</p>
+                                </div>
+                                <p class="text-xs font-mono select-all text-gray-500">ID: ${userId.substring(0, 12)}</p>
+                            </div>
+                        </div>
+                        <div id="view-content"></div>
+                    </main>
+                    
+                    <footer class="bg-gray-800 text-white mt-12">
+                        <div class="container mx-auto px-4 py-4 text-center">
+                            <p class="text-sm">&copy; ${new Date().getFullYear()} Portal SMAN 1 Dramaga. Didukung oleh Gemini.</p>
+                        </div>
+                    </footer>
+                </div>
+            `;
+            renderCurrentView();
+        };
+
+        const renderCurrentView = () => {
+            const viewContent = document.getElementById('view-content');
+            if (!viewContent) return;
+
+            switch (currentView) {
+                case 'profile':
+                    viewContent.innerHTML = renderSchoolProfile();
+                    break;
+                case 'activities':
+                    viewContent.innerHTML = renderActivitiesDashboard();
+                    break;
+                case 'schedule':
+                    viewContent.innerHTML = renderScheduleView();
+                    attachScheduleListeners();
+                    break;
+                case 'teachers':
+                    viewContent.innerHTML = renderTeachersDirectory();
+                    break;
+            }
+        };
+
+        // --- Fungsi Render per Halaman ---
+        const renderLoading = () => {
+            appContainer.innerHTML = `
+                <div class="min-h-screen flex items-center justify-center bg-gray-50">
+                    <div class="text-center p-8">
+                        <div class="w-12 h-12 mx-auto text-blue-500 animate-spin">${ICONS.clock}</div>
+                        <h2 class="mt-4 text-xl font-semibold text-gray-700">Memuat Portal...</h2>
+                    </div>
+                </div>`;
+        };
+
+        const renderLogin = () => {
+             appContainer.innerHTML = `
+                <div class="fixed inset-0 z-50 bg-gray-900 bg-opacity-90 flex items-center justify-center p-4">
+                    <div class="bg-white w-full max-w-sm rounded-xl shadow-2xl p-6 md:p-8 text-center">
+                        <div class="w-12 h-12 mx-auto text-blue-600 mb-4">${ICONS.lock}</div>
+                        <h3 class="text-2xl font-bold text-gray-800 mb-2">Login Portal</h3>
+                        <p class="text-gray-600 mb-6">Gunakan akun simulasi untuk masuk.</p>
+                        <div id="login-error" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-3 mb-4 rounded-md text-sm"></div>
+                        <form id="login-form" class="space-y-4">
+                            <div><input type="text" name="username" class="w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="Username" required /></div>
+                            <div><input type="password" name="password" class="w-full px-4 py-3 border border-gray-300 rounded-lg" placeholder="Password" required /></div>
+                            <button type="submit" class="w-full py-3 px-4 rounded-lg font-bold transition bg-green-600 text-white hover:bg-green-700">Masuk</button>
+                        </form>
+                        <p class="mt-4 text-xs text-gray-500">*Coba: <strong>admin_smanda</strong> / <strong>123456</strong></p>
+                    </div>
+                </div>`;
+        };
+        
+        const renderActivitiesDashboard = () => {
+            const canPost = userRole === 'admin' || userRole === 'guru';
+            let activitiesHtml = activities.length > 0
+                ? activities.map(activity => {
+                    const roleClass = activity.userRole === 'admin' ? 'border-red-500' : 'border-blue-500';
+                    const roleBadgeClass = activity.userRole === 'admin' ? 'bg-red-500' : 'bg-green-500';
+                    const activityDate = new Date(activity.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                    return `
+                        <div class="bg-white p-5 rounded-xl shadow-lg border-t-4 ${roleClass} transform hover:scale-[1.02] transition duration-300">
+                            <div class="flex items-center space-x-3 mb-2">
+                                <span class="w-5 h-5 text-blue-600">${ICONS.calendar}</span>
+                                <span class="text-sm font-medium text-gray-600">${activityDate}</span>
+                            </div>
+                            <h4 class="text-xl font-bold text-gray-800 mb-2">${activity.title}</h4>
+                            <p class="text-gray-700 mb-4 text-sm">${activity.description}</p>
+                            <div class="text-xs text-gray-500 border-t pt-2 mt-2 flex justify-between items-center">
+                                <p>Oleh: <span class="font-semibold text-gray-800">${activity.postedBy}</span></p>
+                                <div class="px-2 py-0.5 rounded-full text-white text-xs font-semibold ${roleBadgeClass}">${AVAILABLE_ROLES[activity.userRole] || 'Tamu'}</div>
+                            </div>
+                        </div>`;
+                }).join('')
+                : '<p class="col-span-full text-center text-gray-500 py-10">Belum ada kegiatan.</p>';
+
+            return `
+                <div class="flex justify-between items-center mb-6 border-b pb-4">
+                    <h2 class="text-2xl font-bold text-gray-800 flex items-center space-x-2"><span class="w-6 h-6 text-blue-600">${ICONS.calendar}</span><span>Daftar Kegiatan Terbaru</span></h2>
+                    <button id="add-activity-button" class="flex items-center font-semibold py-2 px-4 rounded-full shadow-lg transition duration-300 transform hover:scale-105 ${canPost ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-600 cursor-not-allowed'}" ${!canPost ? 'disabled' : ''}>
+                        <span class="w-5 h-5 mr-1">${ICONS.plus}</span><span class="hidden sm:inline">Tambah</span>
+                    </button>
+                </div>
+                <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${activitiesHtml}</section>
+            `;
+        };
+
+        const renderTeachersDirectory = () => {
+             return `<h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center space-x-2 border-b pb-4"><span class="w-6 h-6 text-yellow-600">${ICONS.users}</span><span>Direktori Staf Pengajar</span></h2>
+                <section class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                    ${MOCK_TEACHERS.map(teacher => `
+                        <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-yellow-500 text-center hover:shadow-xl transition duration-300 transform hover:scale-[1.02]">
+                            <img src="${teacher.imageUrl}" alt="Foto ${teacher.name}" class="w-24 h-24 rounded-full mx-auto mb-4 object-cover border-4 border-yellow-300 shadow-md" onError="this.onerror=null;this.src='https://placehold.co/100x100/aaaaaa/ffffff?text=FOTO';"/>
+                            <h4 class="text-lg font-bold text-gray-800 mb-1">${teacher.name}</h4>
+                            <p class="text-sm font-semibold text-yellow-600 mb-2">${teacher.subject}</p>
+                            <p class="text-xs text-gray-500">Tenaga Pendidik Profesional</p>
+                        </div>
+                    `).join('')}
+                </section>`;
+        };
+        
+        const renderScheduleView = (selectedClass = 'XII-A', selectedDay) => {
+            const classNames = Object.keys(MOCK_SCHEDULES);
+            const dayNames = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+            const todayName = dayNames[new Date().getDay()];
+            const schedule = MOCK_SCHEDULES[selectedClass];
+            const days = Object.keys(schedule);
+            
+            if (!selectedDay) {
+                selectedDay = days.includes(todayName) ? todayName : 'Senin';
+            }
+
+            return `
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center space-x-2 border-b pb-4"><span class="w-6 h-6 text-purple-600">${ICONS.schedule}</span><span>Jadwal Pelajaran</span></h2>
+                <div class="mb-8 p-4 bg-white rounded-xl shadow-lg">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Pilih Kelas:</label>
+                    <div class="flex flex-wrap gap-3">
+                        ${classNames.map(cn => `<button data-class="${cn}" class="schedule-class-btn px-4 py-2 text-sm font-semibold rounded-full transition ${selectedClass === cn ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-purple-100'}">${cn}</button>`).join('')}
+                    </div>
+                </div>
+                <div class="mb-6 overflow-x-auto">
+                    <div class="flex space-x-2 p-2 bg-white rounded-xl shadow-inner">
+                        ${days.map(day => `<button data-day="${day}" class="schedule-day-btn flex-shrink-0 px-4 py-2 text-sm font-semibold rounded-lg transition relative ${selectedDay === day ? 'bg-purple-500 text-white shadow-md transform scale-105' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}">${day}${day === todayName ? '<span class="absolute -top-2 -right-2 flex h-5 w-12 items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold">Hari Ini</span>' : ''}</button>`).join('')}
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-purple-500">
+                    <h3 class="text-xl font-bold text-purple-700 mb-4">${selectedDay} - Kelas ${selectedClass}</h3>
+                    <ul class="space-y-3">
+                        ${schedule[selectedDay].map(lesson => {
+                            const [time, subject] = lesson.split(' | ');
+                            const isBreak = subject === 'Istirahat';
+                            return `<li class="flex items-center p-3 rounded-lg transition ${isBreak ? 'bg-yellow-50 border-l-4 border-yellow-500' : 'bg-gray-50 border-l-4 border-purple-300 hover:bg-purple-50'}">
+                                <span class="w-5 h-5 mr-3 flex-shrink-0 ${isBreak ? 'text-yellow-600' : 'text-purple-500'}">${ICONS.clock}</span>
+                                <div class="flex justify-between w-full items-center">
+                                    <span class="font-mono text-sm w-28 flex-shrink-0">${time}</span>
+                                    <span class="font-semibold text-right ${isBreak ? 'text-yellow-900' : 'text-gray-800'}">${subject}</span>
+                                </div>
+                            </li>`;
+                        }).join('')}
+                    </ul>
+                </div>`;
+        };
+
+        const renderSchoolProfile = () => {
+             return `
+                <h2 class="text-3xl font-bold text-gray-800 mb-8 flex items-center space-x-3 border-b pb-4"><span class="w-8 h-8 text-blue-600">${ICONS.building}</span><span>Profil SMAN 1 Dramaga</span></h2>
+                <div class="space-y-12">
+                    <section class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-blue-500">
+                        <h3 class="text-2xl font-bold text-gray-800 mb-4">Visi & Misi</h3>
+                        <div class="mb-4"><h4 class="font-semibold text-lg text-blue-700">Visi</h4><p class="text-gray-600 italic">"${SCHOOL_PROFILE_DATA.visiMisi.visi}"</p></div>
+                        <div><h4 class="font-semibold text-lg text-blue-700">Misi</h4><ul class="list-disc list-inside space-y-2 text-gray-600 pl-2">${SCHOOL_PROFILE_DATA.visiMisi.misi.map(m => `<li>${m}</li>`).join('')}</ul></div>
+                    </section>
+                    <section class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-green-500"><h3 class="text-2xl font-bold text-gray-800 mb-4">Sejarah Singkat</h3><p class="text-gray-600 leading-relaxed text-justify">${SCHOOL_PROFILE_DATA.sejarah}</p></section>
+                    <section><h3 class="text-2xl font-bold text-gray-800 mb-4">Akreditasi Sekolah</h3><div class="bg-white p-6 rounded-xl shadow-lg flex flex-col md:flex-row items-center gap-6 border-l-4 border-yellow-500"><div class="flex-shrink-0 bg-yellow-400 text-white w-24 h-24 rounded-full flex items-center justify-center shadow-md"><span class="w-16 h-16">${ICONS.star}</span></div><div><p class="text-5xl font-extrabold text-yellow-500">Unggul (A)</p><p class="text-gray-600 mt-2">${SCHOOL_PROFILE_DATA.akreditasi.keterangan}</p></div></div></section>
+                    <section><h3 class="text-2xl font-bold text-gray-800 mb-4">Struktur Organisasi</h3><div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">${SCHOOL_PROFILE_DATA.struktur.map(p => `<div class="bg-white p-4 rounded-xl shadow-lg text-center"><img src="${p.imageUrl}" alt="${p.name}" class="w-24 h-24 rounded-full mx-auto mb-3 object-cover border-4 border-gray-200" /><h4 class="font-bold text-gray-800">${p.name}</h4><p class="text-sm text-gray-500">${p.role}</p></div>`).join('')}</div></section>
+                    <section><h3 class="text-2xl font-bold text-gray-800 mb-4">Fasilitas Sekolah</h3><div class="grid grid-cols-2 md:grid-cols-4 gap-4">${FACILITIES.map(f => `<div class="bg-white p-4 rounded-xl shadow-lg flex items-center space-x-4">${f.icon}<span class="font-semibold text-gray-700">${f.name}</span></div>`).join('')}</div></section>
+                </div>`;
+        };
+        
+        // --- Fungsi Modal ---
+        const renderAddActivityModal = () => {
+             const canPost = userRole === 'admin' || userRole === 'guru';
+             modalPlaceholder.innerHTML = `
+                <div id="activity-modal" class="fixed inset-0 z-50 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4">
+                    <div class="bg-white w-full max-w-lg rounded-xl shadow-2xl p-6 md:p-8">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-2xl font-bold text-blue-600">Tambah Kegiatan</h3>
+                            <button id="close-activity-modal" class="text-gray-400 hover:text-gray-600"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                        </div>
+                        <div id="form-error" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-3 mb-4 rounded-md text-sm"></div>
+                        ${!canPost ? `
+                            <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 rounded-md text-center">
+                                <p class="font-semibold">Akses Terbatas</p><p class="text-sm">Hanya Admin dan Guru yang dapat memposting.</p>
+                            </div>` : `
+                            <form id="activity-form" class="space-y-4">
+                                <div><label for="title" class="block text-sm font-medium text-gray-700 mb-1">Judul</label><input type="text" name="title" class="w-full px-4 py-3 border border-gray-300 rounded-lg" required /></div>
+                                <div><label for="date" class="block text-sm font-medium text-gray-700 mb-1">Tanggal</label><input type="date" name="date" class="w-full px-4 py-3 border border-gray-300 rounded-lg" required /></div>
+                                <div><label for="description" class="block text-sm font-medium text-gray-700 mb-1">Deskripsi</label><textarea name="description" rows="4" class="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none" required></textarea></div>
+                                <button type="submit" class="w-full py-3 px-4 rounded-lg font-semibold transition bg-blue-600 text-white hover:bg-blue-700">Posting</button>
+                            </form>`
+                        }
+                    </div>
+                </div>`;
+        };
+
+        // --- Event Handlers & Logic ---
+        const handleLogout = async () => {
+            if (!db || !userId) return;
+            const profileDocRef = doc(db, `artifacts/${appId}/users/${userId}/profile/data`);
+            try {
+                await deleteDoc(profileDocRef);
+                userId = null;
+                userRole = null;
+                simulatedUsername = null;
+                if(unsubscribeActivities) unsubscribeActivities();
+                render();
+            } catch (error) { console.error("Logout Error:", error); }
+        };
+
+        const attachMainListeners = () => {
+            appContainer.addEventListener('click', e => {
+                const navButton = e.target.closest('.nav-button');
+                if (navButton) {
+                    currentView = navButton.dataset.view;
+                    render();
+                    return;
+                }
+                if (e.target.closest('#logout-button')) {
+                    handleLogout();
+                    return;
+                }
+                if (e.target.closest('#add-activity-button')) {
+                    renderAddActivityModal();
+                    return;
+                }
+            });
+        };
+
+        const attachLoginListener = () => {
+            const loginForm = document.getElementById('login-form');
+            if(loginForm) {
+                loginForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const username = e.target.username.value;
+                    const password = e.target.password.value;
+                    const errorDiv = document.getElementById('login-error');
+                    const submitButton = loginForm.querySelector('button[type="submit"]');
+
+                    errorDiv.classList.add('hidden');
+                    submitButton.disabled = true;
+                    submitButton.textContent = 'Memverifikasi...';
+
+                    const matchedUser = MOCK_CREDENTIALS.find(u => u.username === username && u.password === password);
+                    if (!matchedUser) {
+                        errorDiv.textContent = 'Username atau Password salah.';
+                        errorDiv.classList.remove('hidden');
+                        submitButton.disabled = false;
+                        submitButton.textContent = 'Masuk';
+                        return;
+                    }
+                    
+                    const profileDocRef = doc(db, `artifacts/${appId}/users/${userId}/profile/data`);
+                    try {
+                        await setDoc(profileDocRef, { role: matchedUser.role, displayName: matchedUser.displayName, loginTimestamp: serverTimestamp() });
+                        userRole = matchedUser.role;
+                        simulatedUsername = matchedUser.displayName;
+                        render();
+                    } catch (err) {
+                        errorDiv.textContent = 'Gagal menyimpan data login.';
+                        errorDiv.classList.remove('hidden');
+                        submitButton.disabled = false;
+                        submitButton.textContent = 'Masuk';
+                    }
+                });
+            }
+        };
+
+        const attachModalListeners = () => {
+            modalPlaceholder.addEventListener('click', e => {
+                if(e.target.closest('#close-activity-modal')) {
+                    modalPlaceholder.innerHTML = '';
+                }
+            });
+
+            const activityForm = document.getElementById('activity-form');
+            if (activityForm) {
+                activityForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const submitButton = activityForm.querySelector('button[type="submit"]');
+                    const errorDiv = document.getElementById('form-error');
+
+                    submitButton.disabled = true;
+                    submitButton.textContent = 'Menyimpan...';
+                    errorDiv.classList.add('hidden');
+
+                    const data = {
+                        title: e.target.title.value,
+                        date: e.target.date.value,
+                        description: e.target.description.value
+                    };
+
+                    try {
+                        await addDoc(collection(db, `artifacts/${appId}/public/data/activities`), { ...data, postedBy: simulatedUsername || userId, userRole, timestamp: serverTimestamp() });
+                        modalPlaceholder.innerHTML = '';
+                    } catch (error) {
+                        errorDiv.textContent = `Gagal: ${error.message}`;
+                        errorDiv.classList.remove('hidden');
+                        submitButton.disabled = false;
+                        submitButton.textContent = 'Posting';
+                    }
+                });
+            }
+        };
+
+        const attachScheduleListeners = () => {
+            const viewContent = document.getElementById('view-content');
+            if(!viewContent) return;
+
+            const currentClass = viewContent.querySelector('.schedule-class-btn.bg-purple-600').dataset.class;
+            const currentDay = viewContent.querySelector('.schedule-day-btn.bg-purple-500').dataset.day;
+
+            viewContent.addEventListener('click', e => {
+                const classBtn = e.target.closest('.schedule-class-btn');
+                if(classBtn) {
+                    viewContent.innerHTML = renderScheduleView(classBtn.dataset.class, currentDay);
+                    attachScheduleListeners();
+                    return;
+                }
+                const dayBtn = e.target.closest('.schedule-day-btn');
+                if(dayBtn) {
+                     viewContent.innerHTML = renderScheduleView(currentClass, dayBtn.dataset.day);
+                     attachScheduleListeners();
+                     return;
+                }
+            });
+        };
+        
+        // --- Inisialisasi Aplikasi ---
+        const initializeAppLogic = () => {
+            renderLoading();
+            if (!Object.keys(firebaseConfig).length) {
+                console.error("Firebase config is empty.");
+                appContainer.innerHTML = `<div class="p-4 text-red-700 bg-red-100">Konfigurasi Firebase tidak ditemukan.</div>`;
+                return;
+            }
+
+            try {
+                setLogLevel('debug');
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        const profileDocRef = doc(db, `artifacts/${appId}/users/${userId}/profile/data`);
+                        const docSnap = await getDoc(profileDocRef);
+                        
+                        if (docSnap.exists() && docSnap.data().role) {
+                            const data = docSnap.data();
+                            userRole = data.role;
+                            simulatedUsername = data.displayName;
+                            
+                            // Start listening for activities only after successful login
+                            if (unsubscribeActivities) unsubscribeActivities();
+                            const q = query(collection(db, `artifacts/${appId}/public/data/activities`));
+                            unsubscribeActivities = onSnapshot(q, (snapshot) => {
+                                activities = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                                activities.sort((a,b) => (b.timestamp?.toDate() || 0) - (a.timestamp?.toDate() || 0));
+                                if(document.getElementById('view-content') && currentView === 'activities'){
+                                    document.getElementById('view-content').innerHTML = renderActivitiesDashboard();
+                                }
+                            });
+
+                        } else {
+                            userRole = null;
+                            simulatedUsername = null;
+                        }
+
+                    } else {
+                        userId = null;
+                    }
+                    render();
+                    attachLoginListener();
+                });
+
+                 setPersistence(auth, browserSessionPersistence).then(() => {
+                    if(initialAuthToken) return signInWithCustomToken(auth, initialAuthToken);
+                    return signInAnonymously(auth);
+                 }).catch(err => console.error("Auth persistence error:", err));
+
+            } catch (error) {
+                console.error("Firebase Init Error:", error);
+                appContainer.innerHTML = `<div class="p-4 text-red-700 bg-red-100">Gagal menginisialisasi aplikasi.</div>`;
+            }
+        };
+
+        // --- Jalankan Aplikasi ---
+        initializeAppLogic();
+        attachMainListeners();
+        document.addEventListener('DOMContentLoaded', () => {
+            // Re-attach listeners when DOM might be manipulated by modals
+            const observer = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    if (mutation.type === 'childList') {
+                        attachModalListeners();
+                    }
+                }
+            });
+            observer.observe(modalPlaceholder, { childList: true });
+        });
+
+    </script>
+</body>
+</html>
