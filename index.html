@@ -388,16 +388,26 @@
 
                 if (session) {
                     userId = session.user.id;
-                    // FIX: Berikan nilai default jika user_metadata tidak ada
-                    if (session.user.user_metadata && Object.keys(session.user.user_metadata).length > 0) {
+                    
+                    // PERBAIKAN: Berikan nilai default jika user_metadata tidak ada atau kosong
+                    if (session.user.user_metadata && Object.keys(session.user.user_metadata).length > 0 && session.user.user_metadata.role) {
                         userRole = session.user.user_metadata.role;
-                        simulatedUsername = session.user.user_metadata.displayName;
+                        simulatedUsername = session.user.user_metadata.displayName || session.user.email;
                     } else {
-                        console.warn(`Metadata untuk pengguna ${session.user.email} tidak ditemukan. Memberikan peran default 'siswa'.`);
-                        userRole = 'siswa'; // Peran default
-                        simulatedUsername = session.user.email; // Nama tampilan default
+                        // Logika fallback yang lebih cerdas
+                        console.warn(`Metadata untuk pengguna ${session.user.email} tidak ditemukan atau tidak lengkap. Memberikan peran default.`);
+                        if (session.user.email.includes('admin')) {
+                            userRole = 'admin';
+                            simulatedUsername = 'Admin (Default)';
+                        } else if (session.user.email.includes('guru')) {
+                             userRole = 'guru';
+                             simulatedUsername = 'Guru (Default)';
+                        }
+                        else {
+                            userRole = 'siswa'; // Peran default untuk lainnya
+                            simulatedUsername = session.user.email.split('@')[0]; // Nama tampilan default
+                        }
                     }
-
 
                     if (!activitiesSubscription) {
                         await fetchActivities();
