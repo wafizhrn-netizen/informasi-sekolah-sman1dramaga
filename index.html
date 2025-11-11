@@ -480,6 +480,7 @@
                     description: form.description.value,
                     postedBy: simulatedUsername,
                     userRole: userRole,
+                    created_at: new Date().toISOString() // PERBAIKAN: Menambahkan stempel waktu manual
                 });
 
                 if (error) {
@@ -501,4 +502,3 @@
     </script>
 </body>
 </html>
-
